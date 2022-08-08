@@ -1,7 +1,7 @@
 name: Deploy my project
 on:
   push:
-    branches: [ "main" , "lambda-function-setup" ]
+    branches: [ "main" , "setup-ec2-instance" ]
     
   workflow_dispatch:
 jobs:
@@ -29,4 +29,10 @@ jobs:
           cd infrastructure
           terraform init
           terraform apply -auto-approve
+      - name: Setup EC2 Instance & load balancer using cloudformation 
+        run: |
+          cd ec2_instance
+          aws cloudformation create-stack --stack-name my-cancer-res-stack --template-body file://ec2.yaml
+
+          
           

@@ -1,0 +1,194 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Template to create a vpc with a webserver
+Resources: 
+  mywebservervpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+      Tags:
+       - Key: Name
+         Value: my-cancer-research-vpc
+        
+  publicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: mywebservervpc
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: "eu-central-1a"
+      Tags:
+      - Key: Name
+        Value: cancer-research-subnet
+
+  publicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: mywebservervpc
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: "eu-central-1b"
+      Tags:
+      - Key: Name
+        Value: cancer-research-subnet-2
+
+
+  myRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:  
+        Ref: mywebservervpc
+      Tags:
+      - Key: Name
+        Value: cancer-research-routetable
+
+  mySubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: publicSubnet
+      RouteTableId:
+        Ref: myRouteTable
+
+  mySubnetRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: publicSubnet2
+      RouteTableId:
+        Ref: myRouteTable
+
+     
+  myInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: Name
+        Value: cancer-research-igw
+
+  AttachIgw:
+     Type: AWS::EC2::VPCGatewayAttachment
+     Properties:
+       VpcId:
+         Ref: mywebservervpc
+       InternetGatewayId:
+         Ref: myInternetGateway
+
+  routeToIgw:
+     Type: AWS::EC2::Route
+     DependsOn: myInternetGateway
+     Properties:
+        RouteTableId:
+          Ref: myRouteTable
+        DestinationCidrBlock: 0.0.0.0/0
+        GatewayId:
+          Ref: myInternetGateway
+
+  webServerSecurityGroup:
+     Type: AWS::EC2::SecurityGroup
+     Properties:
+       GroupDescription: Allow to access server over http
+       VpcId: 
+         Ref: mywebservervpc
+       SecurityGroupIngress:
+         - IpProtocol: tcp
+           FromPort: 8000
+           ToPort: 8000
+           CidrIp: 0.0.0.0/0
+         - IpProtocol: tcp
+           FromPort: 22
+           ToPort: 22
+           CidrIp: 0.0.0.0/0
+       SecurityGroupEgress:
+         - IpProtocol: -1
+           CidrIp: 0.0.0.0/0
+  
+  Ec2Instance: 
+     Type: AWS::EC2::Instance
+     Properties: 
+         Tags:
+           - Key: Name
+             Value: cancer-research-ec2
+         ImageId: ami-0a1ee2fb28fe05df3
+         IamInstanceProfile: LabInstanceProfile   
+         InstanceType: t2.micro
+
+         NetworkInterfaces: 
+           - AssociatePublicIpAddress: "true"
+             DeviceIndex: "0"
+             GroupSet: 
+             - Ref: "webServerSecurityGroup"
+             SubnetId: 
+              Ref: "publicSubnet"
+              
+         UserData : 
+                Fn::Base64: 
+                  !Sub |     
+                      #!/bin/bash
+                      python3 -m venv venv_ec2
+                      source venv_ec2/bin/activate
+                      pip3 install boto3
+                      pip3 install jinja2
+                      pip3 install fastapi
+                      pip3 install uvicorn
+                      pip3 install "uvicorn[standard]"
+                      aws s3 cp s3://my-cancer-research-source-code-bucket1234567/ec2-code.zip .
+                      unzip ec2-code.zip
+                      cd ec2-code
+                      python3 main.py
+
+  EC2TargetGroup:
+      Type: AWS::ElasticLoadBalancingV2::TargetGroup
+      Properties:
+          HealthCheckIntervalSeconds: 30
+          HealthCheckProtocol: HTTP
+          HealthCheckTimeoutSeconds: 15
+          HealthyThresholdCount: 5
+          Matcher:
+            HttpCode: "200"
+          Name: EC2TargetGroup
+          Port: 8000
+          Protocol: HTTP
+          TargetGroupAttributes:
+            - Key: deregistration_delay.timeout_seconds
+              Value: "20"
+          Targets:
+            - Id:
+                Ref: Ec2Instance
+              Port: 8000
+          UnhealthyThresholdCount: 3
+          VpcId:
+            Ref: mywebservervpc
+          Tags:
+            - Key: Name
+              Value: EC2TargetGroup
+            - Key: Port
+              Value: 8000
+
+  ApplicationLoadBalancer:
+      Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+      Properties:
+          Scheme: internet-facing
+          Subnets:
+          - Ref: publicSubnet
+          - Ref: publicSubnet2
+          SecurityGroups:
+          - Ref: webServerSecurityGroup
+          Tags:
+            - Key: Name
+              Value: Cancer-Res-Loadbalancer
+    
+  ALBListener:
+      Type: AWS::ElasticLoadBalancingV2::Listener
+      Properties:
+          DefaultActions:
+            - Type: forward
+              TargetGroupArn:
+                Ref: EC2TargetGroup
+          LoadBalancerArn:
+             Ref: ApplicationLoadBalancer
+          Port: 8000
+          Protocol: HTTP
+
+    
