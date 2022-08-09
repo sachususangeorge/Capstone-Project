@@ -29,6 +29,12 @@ jobs:
           cd infrastructure
           terraform init
           terraform apply -auto-approve
+      - name: S3 bucket for source code
+        run: |
+          cd s3_bucket_source_code
+          aws s3api create-bucket --bucket my-cancer-research-source-code-bucket1234567 --region eu-central-1 --create-bucket-configuration LocationConstraint=eu-central-1
+          aws s3 cp ec2-code.zip s3://my-cancer-research-source-code-bucket1234567/ec2-code.zip 
+
       - name: Setup EC2 Instance & load balancer using cloudformation 
         run: |
           cd ec2_instance
