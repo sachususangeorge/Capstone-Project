@@ -24,4 +24,4 @@ Cancer-Res is a use case for cancer research data from the "National Cancer Inst
 
 
 
-<img src="image.png"  width="650"/>
+<img src="image.png"  width="950" height=500/>
