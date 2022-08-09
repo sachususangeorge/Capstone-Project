@@ -1,7 +1,7 @@
 name: Deploy my project
 on:
   push:
-    branches: [ "main" , "setup-ec2-instance" ]
+    branches: [ "main" , "setup_s3_source_code" ]
     
   workflow_dispatch:
 jobs:
